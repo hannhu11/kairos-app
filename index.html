@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KAIROS - AI Multimedia Design Companion</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827;
+            color: #F9FAFB;
+        }
+        .tab-active { background-color: #374151; color: #F9FAFB; }
+        .tab-inactive { background-color: transparent; color: #9CA3AF; border-color: transparent; }
+        .loader {
+            width: 40px; aspect-ratio: 1; border-radius: 50%;
+            background: radial-gradient(farthest-side, #7c3aed 94%, #0000) top/8px 8px no-repeat, conic-gradient(#0000 30%, #7c3aed);
+            -webkit-mask: radial-gradient(farthest-side, #0000 calc(100% - 8px), #000 0);
+            animation: l13 1s infinite linear;
+        }
+        @keyframes l13 { 100% { transform: rotate(1turn) } }
+        .fade-in { animation: fadeIn 0.8s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .prose { color: #d1d5db; }
+        .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 { color: #f9fafb; font-weight: 600; }
+        .prose strong { color: #f9fafb; }
+        .prose a { color: #a78bfa; }
+        .prose code { color: #f472b6; background-color: #374151; padding: 0.2em 0.4em; border-radius: 0.25rem;}
+        .prose ul > li::before { background-color: #a78bfa; }
+    </style>
+</head>
+<body class="antialiased">
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="p-4 md:px-8 border-b border-gray-700/50 sticky top-0 bg-gray-900/50 backdrop-blur-sm z-20">
+            <div class="container mx-auto flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-violet-500"><path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <h1 class="text-xl font-bold tracking-tighter text-white">KAIROS</h1>
+                </div>
+                <div id="auth-section" class="flex items-center gap-2"></div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-grow container mx-auto p-4 md:p-8 flex flex-col items-center">
+            <!-- Navigation Tabs -->
+            <div class="w-full max-w-5xl mb-8">
+                <div class="flex space-x-2 p-1 bg-gray-800/80 rounded-lg">
+                    <button data-tab="muse" class="nav-tab flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors">MUSE (Moodboard)</button>
+                    <button data-tab="critique" class="nav-tab flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors">CRITIQUE (Feedback)</button>
+                    <button data-tab="synth" class="nav-tab flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors">SYNTH (Storyboard)</button>
+                    <button data-tab="showcase" class="nav-tab flex-1 py-2 px-4 rounded-md text-sm font-semibold transition-colors">SHOWCASE (Portfolio)</button>
+                </div>
+            </div>
+
+            <!-- Tab Content -->
+            <div id="tab-content" class="w-full max-w-5xl">
+                <div id="muse-content" class="tab-pane hidden"></div>
+                <div id="critique-content" class="tab-pane hidden"></div>
+                <div id="synth-content" class="tab-pane hidden"></div>
+                <div id="showcase-content" class="tab-pane hidden"></div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // --- GLOBAL STATE & CONFIG ---
+        let auth;
+        let activeTab = 'muse';
+        let uploadedCritiqueImageBase64 = null;
+        
+        // IMPORTANT: This API_KEY is a placeholder. In a real deployment on Vercel/Netlify,
+        // this should be replaced by an environment variable during the build process.
+        // For this environment, Canvas provides the key automatically.
+        const API_KEY = ""; 
+        const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
+        const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${API_KEY}`;
+
+        // --- AUTHENTICATION ---
+        const authSection = document.getElementById('auth-section');
+        const updateAuthUI = (user) => {
+            if (user) {
+                authSection.innerHTML = `<span class="text-sm text-gray-400">Welcome, Guest!</span><button id="logout-btn" class="px-3 py-1.5 text-sm font-medium text-white bg-red-600/50 rounded-lg hover:bg-red-600/80 transition-colors">Logout</button>`;
+                document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
+            } else {
+                authSection.innerHTML = `<button id="login-btn" class="px-4 py-2 text-sm font-medium text-white bg-white/10 rounded-lg hover:bg-white/20 transition-colors">Login Anonymously</button>`;
+                document.getElementById('login-btn').addEventListener('click', () => signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed", err)));
+            }
+        };
+        const initializeFirebase = async () => {
+            try {
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+                if (!firebaseConfig) { console.error("Firebase config not found."); updateAuthUI(null); return; }
+                const app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                onAuthStateChanged(auth, user => updateAuthUI(user));
+            } catch (e) { console.error("Firebase initialization error:", e); }
+        };
+
+        // --- TAB NAVIGATION ---
+        const handleTabClick = (e) => {
+            const targetTab = e.currentTarget.dataset.tab;
+            if (targetTab === activeTab) return;
+            activeTab = targetTab;
+            updateTabs();
+        };
+        const updateTabs = () => {
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                const isTabActive = tab.dataset.tab === activeTab;
+                tab.classList.toggle('tab-active', isTabActive);
+                tab.classList.toggle('tab-inactive', !isTabActive);
+            });
+            document.querySelectorAll('.tab-pane').forEach(pane => {
+                pane.classList.toggle('hidden', pane.id !== `${activeTab}-content`);
+            });
+        };
+
+        // --- UTILS ---
+        window.copyToClipboard = (text, element) => {
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = element.querySelector('.copy-text');
+                if(originalText) {
+                    originalText.textContent = 'Copied!';
+                    setTimeout(() => { originalText.textContent = 'Copy'; }, 1500);
+                }
+            });
+        };
+        const apiFetch = async (url, options, retries = 3, delay = 1000) => {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (response.ok) return response;
+                    if (response.status >= 400 && response.status < 500) throw new Error(`API Client Error: ${response.status} ${response.statusText}`);
+                    console.warn(`API request failed with status ${response.status}. Retrying in ${delay}ms...`);
+                } catch (error) {
+                    if (i === retries - 1) throw error;
+                }
+                await new Promise(res => setTimeout(res, delay * (i + 1)));
+            }
+            throw new Error("API request failed after multiple retries.");
+        };
+        const secureMarkdownToHtml = (text) => {
+            // Sanitize the input to prevent XSS.
+            const tempDiv = document.createElement('div');
+            tempDiv.textContent = text;
+            let sanitizedText = tempDiv.innerHTML;
+
+            // Apply markdown formatting to the sanitized text.
+             return sanitizedText
+                .replace(/^(#+)\s*(.*)/gm, (match, hashes, content) => `<h${hashes.length + 1} class="font-bold mt-4 mb-2 text-white">${content}</h${hashes.length + 1}>`)
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(?!\*)(.*?)\*(?!\*)/g, '<em>$1</em>')
+                .split('\n').map(line => line.trim().startsWith('* ') ? `<li class="ml-4">${line.trim().substring(2)}</li>` : line).join('<br>')
+                .replace(/<br><li>/g, '<li>').replace(/(<li>.*?<\/li>)/gs, '<ul class="list-disc list-inside space-y-1 mt-2">$1</ul>').replace(/<\/ul>\s*<br>\s*<ul>/g, '');
+        };
+
+        // --- MODULE INITIALIZATION ---
+        const initModules = () => {
+            initMuseModule();
+            initCritiqueModule();
+            initSynthModule();
+            initShowcaseModule();
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', handleTabClick));
+            updateTabs();
+        };
+
+        // --- MUSE MODULE LOGIC ---
+        function initMuseModule() {
+            const container = document.getElementById('muse-content');
+            container.innerHTML = `
+                <section class="text-center mb-12"><h2 class="text-3xl md:text-4xl font-bold tracking-tight">AI Moodboard Generator</h2><p class="mt-3 max-w-2xl mx-auto text-md text-gray-400">Describe your concept, and let our AI build the perfect moodboard for you.</p></section>
+                <section class="w-full max-w-3xl mx-auto p-6 bg-gray-800/50 rounded-2xl border border-gray-700"><label for="muse-prompt-input" class="block text-sm font-medium text-gray-300 mb-2">Enter your idea</label><div class="relative"><textarea id="muse-prompt-input" rows="3" class="w-full bg-gray-900 border border-gray-600 rounded-lg p-4 text-white placeholder-gray-500 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition resize-none" placeholder="e.g., A branding for a futuristic electric scooter company..."></textarea><button id="muse-generate-btn" class="absolute bottom-3 right-3 px-5 py-2.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 focus:outline-none focus:ring-4 focus:ring-violet-800 transition-all flex items-center gap-2">Generate</button></div></section>
+                <div id="muse-status-section" class="text-center my-12"></div><section id="muse-results-section" class="w-full mt-12"></section>`;
+            
+            document.getElementById('muse-generate-btn').addEventListener('click', async () => {
+                const promptInput = document.getElementById('muse-prompt-input');
+                const statusSection = document.getElementById('muse-status-section');
+                const resultsSection = document.getElementById('muse-results-section');
+                const generateBtn = document.getElementById('muse-generate-btn');
+
+                const setLoadingState = (isLoading) => {
+                    generateBtn.disabled = isLoading;
+                    statusSection.innerHTML = isLoading ? `<div class="flex flex-col items-center gap-4"><div class="loader"></div><p id="muse-status-message" class="text-gray-400">Warming up AI...</p></div>` : '';
+                };
+                const updateStatus = (message) => { 
+                    const statusEl = document.getElementById('muse-status-message');
+                    if (statusEl) statusEl.textContent = message; 
+                };
+                const showError = (message) => { statusSection.innerHTML = `<div class="p-4 bg-red-900/50 text-red-300 border border-red-700 rounded-lg">${message}</div>`; };
+                
+                const getDesignBrief = async (userPrompt) => {
+                    const systemPrompt = `You are an expert art director. Based on the user's prompt, generate a structured JSON object for a design moodboard. The JSON must follow this schema: - "colorPalette": An array of 5 hex color codes. - "fontPairing": An object with "headingFont" and "bodyFont" (names from Google Fonts). - "imagePrompts": An array of 4 distinct, highly-detailed prompts for an AI image generator. - "keywords": An array of 5-7 relevant keywords. - "title": A creative title for the moodboard. Ensure the output is ONLY the raw JSON object.`;
+                    const payload = { contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\nUser Prompt: "${userPrompt}"` }] }], generationConfig: { responseMimeType: "application/json" } };
+                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        try { return JSON.parse(result.candidates[0].content.parts[0].text); } catch (e) { throw new Error("AI returned invalid data format."); }
+                    } else { throw new Error("Could not get a valid design brief from AI."); }
+                };
+                const generateImages = async (prompts) => {
+                    const imagePromises = prompts.map(prompt => {
+                        const payload = { instances: [{ prompt }], parameters: { "sampleCount": 1 } };
+                        return apiFetch(IMAGEN_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+                            .then(res => res.json())
+                            .then(result => result.predictions?.[0]?.bytesBase64Encoded ? `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}` : 'placeholder')
+                            .catch(err => { console.warn(`Image generation failed for prompt "${prompt}":`, err); return 'placeholder'; });
+                    });
+                    return Promise.all(imagePromises);
+                };
+                const renderMoodboard = (brief, imageUrls) => {
+                    const { colorPalette, fontPairing, keywords, title } = brief;
+                    const fontLink = document.createElement('link');
+                    fontLink.href = `https://fonts.googleapis.com/css2?family=${fontPairing.headingFont.replace(' ', '+')}:wght@700&family=${fontPairing.bodyFont.replace(' ', '+')}:wght@400&display=swap`;
+                    fontLink.rel = 'stylesheet';
+                    document.head.appendChild(fontLink);
+                    const styleTag = document.createElement('style');
+                    styleTag.innerHTML = `.font-heading-display { font-family: '${fontPairing.headingFont}', sans-serif; } .font-body-display { font-family: '${fontPairing.bodyFont}', sans-serif; }`;
+                    document.head.appendChild(styleTag);
+                    resultsSection.innerHTML = `<div class="space-y-12 fade-in"><h3 class="text-3xl font-bold text-center tracking-tight">${title}</h3><div><h4 class="text-xl font-semibold mb-4">Color Palette</h4><div class="grid grid-cols-5 gap-4 p-4 bg-gray-800/50 rounded-lg">${colorPalette.map(c => `<div class="group relative" onclick="copyToClipboard('${c}', this)"><div class="w-full h-24 md:h-32 rounded-lg cursor-pointer transition-transform group-hover:scale-105" style="background-color: ${c};"></div><span class="mt-2 text-center block text-sm text-gray-400 group-hover:text-white">${c}</span><div class="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"><span class="text-white text-xs font-bold copy-text">Copy</span></div></div>`).join('')}</div></div><div><h4 class="text-xl font-semibold mb-4">Typography</h4><div class="grid md:grid-cols-2 gap-6 p-6 bg-gray-800/50 rounded-lg"><div><p class="text-sm text-gray-400 mb-2">Heading</p><p class="text-4xl font-heading-display font-bold">${fontPairing.headingFont}</p></div><div><p class="text-sm text-gray-400 mb-2">Body</p><p class="text-lg font-body-display">The quick brown fox jumps over the lazy dog. ${fontPairing.bodyFont}.</p></div></div></div><div><h4 class="text-xl font-semibold mb-4">Inspirational Images</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4">${imageUrls.map(url => url === 'placeholder' ? `<div class="aspect-square bg-gray-800 rounded-lg flex items-center justify-center text-gray-500">Image failed</div>` : `<img src="${url}" alt="AI generated image" class="w-full h-full object-cover rounded-lg shadow-lg">`).join('')}</div></div><div><h4 class="text-xl font-semibold mb-4">Keywords</h4><div class="flex flex-wrap gap-3">${keywords.map(k => `<span class="px-3 py-1 bg-gray-700 text-gray-300 rounded-full text-sm">${k}</span>`).join('')}</div></div></div>`;
+                };
+                
+                const prompt = promptInput.value.trim();
+                if (!prompt) { alert("Please enter an idea."); return; }
+                setLoadingState(true);
+                resultsSection.innerHTML = '';
+                try {
+                    const designBrief = await getDesignBrief(prompt);
+                    updateStatus("Brief received. Generating images...");
+                    const imageUrls = await generateImages(designBrief.imagePrompts);
+                    updateStatus("Assembling moodboard...");
+                    renderMoodboard(designBrief, imageUrls);
+                } catch (error) {
+                    showError(error.message);
+                } finally {
+                    setLoadingState(false);
+                }
+            });
+        }
+
+        // --- CRITIQUE MODULE LOGIC ---
+        function initCritiqueModule() {
+            const container = document.getElementById('critique-content');
+            container.innerHTML = `
+                <section class="text-center mb-12"><h2 class="text-3xl md:text-4xl font-bold tracking-tight">AI Persona Feedback</h2><p class="mt-3 max-w-2xl mx-auto text-md text-gray-400">Upload your design and get an honest critique from different perspectives.</p></section>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                    <div class="p-6 bg-gray-800/50 rounded-2xl border border-gray-700"><h3 class="font-semibold text-lg mb-4">1. Upload Your Design</h3><div id="image-uploader" class="relative w-full h-64 bg-gray-900 border-2 border-dashed border-gray-600 rounded-lg flex items-center justify-center text-center cursor-pointer hover:border-violet-500 transition"><input type="file" id="image-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept="image/png, image/jpeg, image/webp"><div id="image-preview-container" class="absolute inset-0 p-2"></div><div id="upload-prompt" class="text-gray-500 flex flex-col items-center justify-center"><svg class="mx-auto h-12 w-12" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg><p>Click to upload or drag & drop</p><p class="text-xs">PNG, JPG, WEBP up to 10MB</p></div></div><h3 class="font-semibold text-lg mt-6 mb-4">2. Choose a Persona</h3><select id="persona-select" class="w-full bg-gray-900 border border-gray-600 rounded-lg p-3 text-white focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition"><option value="Marketing Director">Marketing Director</option><option value="Gen Z User">Gen Z User</option><option value="Design Professor">Design Professor</option><option value="Rival Company CEO">Rival Company CEO</option></select><button id="critique-btn" class="w-full mt-6 py-3 text-md font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 focus:outline-none focus:ring-4 focus:ring-violet-800 transition-all flex items-center justify-center gap-2 disabled:bg-gray-500 disabled:cursor-not-allowed" disabled>Get Feedback</button></div>
+                    <div id="feedback-display" class="p-6 bg-gray-800/50 rounded-2xl border border-gray-700 flex flex-col"><div class="flex-grow flex items-center justify-center text-center text-gray-500"><p>Your AI-powered feedback will appear here.</p></div></div>
+                </div>`;
+
+            const critiqueBtn = document.getElementById('critique-btn');
+            const imageInput = document.getElementById('image-input');
+            const imageUploader = document.getElementById('image-uploader');
+            
+            const handleImageUpload = (file) => {
+                const imagePreviewContainer = document.getElementById('image-preview-container');
+                const uploadPrompt = document.getElementById('upload-prompt');
+                if (!file || !file.type.startsWith('image/')) { alert('Please select a valid image file.'); return; }
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    uploadedCritiqueImageBase64 = reader.result.split(',')[1];
+                    imagePreviewContainer.innerHTML = `<img src="${reader.result}" class="w-full h-full object-contain rounded-lg">`;
+                    uploadPrompt.style.display = 'none';
+                    critiqueBtn.disabled = false;
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const handleCritique = async () => {
+                const personaSelect = document.getElementById('persona-select');
+                const feedbackDisplay = document.getElementById('feedback-display');
+                if (!uploadedCritiqueImageBase64 || !personaSelect.value) { alert("Please upload an image and select a persona."); return; }
+                feedbackDisplay.innerHTML = `<div class="flex-grow flex items-center justify-center text-center"><div class="flex flex-col items-center gap-4"><div class="loader"></div><p class="text-gray-400">AI is analyzing your design...</p></div></div>`;
+                critiqueBtn.disabled = true;
+                const persona = personaSelect.value;
+                const prompt = `You are a professional ${persona}. Your task is to provide a constructive critique of the following design. Be honest, direct, and provide actionable feedback from your specific point of view. Structure your feedback with markdown headings, bold text, and bullet points.`;
+                const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: uploadedCritiqueImageBase64 } }] }] };
+                try {
+                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        feedbackDisplay.innerHTML = `<div class="text-left text-gray-300 prose max-w-none">${secureMarkdownToHtml(result.candidates[0].content.parts[0].text)}</div>`;
+                    } else { throw new Error("Received an empty response from the AI."); }
+                } catch (error) {
+                    feedbackDisplay.innerHTML = `<div class="flex-grow flex items-center justify-center text-center text-red-400"><p>Error: ${error.message}</p></div>`;
+                } finally {
+                    critiqueBtn.disabled = false;
+                }
+            };
+
+            critiqueBtn.addEventListener('click', handleCritique);
+            imageInput.addEventListener('change', (e) => handleImageUpload(e.target.files[0]));
+            imageUploader.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.add('border-violet-500'); });
+            imageUploader.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('border-violet-500'); });
+            imageUploader.addEventListener('drop', (e) => {
+                e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove('border-violet-500');
+                if (e.dataTransfer.files.length) handleImageUpload(e.dataTransfer.files[0]);
+            });
+        }
+        
+        // --- SYNTH MODULE LOGIC ---
+        function initSynthModule() {
+            const container = document.getElementById('synth-content');
+            container.innerHTML = `
+                <section class="text-center mb-12"><h2 class="text-3xl md:text-4xl font-bold tracking-tight">AI Storyboard Generator</h2><p class="mt-3 max-w-2xl mx-auto text-md text-gray-400">Describe a scene, and let AI create the storyboard frames for you.</p></section>
+                <section class="w-full max-w-3xl mx-auto p-6 bg-gray-800/50 rounded-2xl border border-gray-700"><label for="synth-prompt-input" class="block text-sm font-medium text-gray-300 mb-2">Describe your scene</label><div class="relative"><textarea id="synth-prompt-input" rows="4" class="w-full bg-gray-900 border border-gray-600 rounded-lg p-4 text-white placeholder-gray-500 focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition resize-none" placeholder="e.g., A detective in a rainy, neon-lit city street at night, looking at a mysterious clue..."></textarea><button id="synth-generate-btn" class="absolute bottom-3 right-3 px-5 py-2.5 text-sm font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700 focus:outline-none focus:ring-4 focus:ring-violet-800 transition-all flex items-center gap-2">✨ Generate Storyboard</button></div></section>
+                <div id="synth-status-section" class="text-center my-12"></div><section id="synth-results-section" class="w-full mt-12"></section>`;
+            
+            document.getElementById('synth-generate-btn').addEventListener('click', async () => {
+                const promptInput = document.getElementById('synth-prompt-input');
+                const statusSection = document.getElementById('synth-status-section');
+                const resultsSection = document.getElementById('synth-results-section');
+                const generateBtn = document.getElementById('synth-generate-btn');
+
+                const setLoadingState = (isLoading) => {
+                    generateBtn.disabled = isLoading;
+                    statusSection.innerHTML = isLoading ? `<div class="flex flex-col items-center gap-4"><div class="loader"></div><p id="synth-status-message" class="text-gray-400">Directing the AI film crew...</p></div>` : '';
+                };
+                const updateStatus = (message) => { 
+                    const statusEl = document.getElementById('synth-status-message');
+                    if (statusEl) statusEl.textContent = message; 
+                };
+                const showError = (message) => { statusSection.innerHTML = `<div class="p-4 bg-red-900/50 text-red-300 border border-red-700 rounded-lg">${message}</div>`; };
+                
+                const getStoryboardFrames = async (userPrompt) => {
+                    const systemPrompt = `You are a professional film director. Based on the user's scene description, create a JSON array of 4 storyboard frames. Each object in the array must have two properties: "shotType" (e.g., "Wide Shot", "Medium Shot", "Close-up", "Over the Shoulder") and "imagePrompt" (a highly detailed, cinematic, and artistic prompt for an AI image generator to create the visual for that frame). Ensure the output is ONLY the raw JSON array.`;
+                    const payload = { contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\nScene: "${userPrompt}"` }] }], generationConfig: { responseMimeType: "application/json" } };
+                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const result = await response.json();
+                     if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        try { 
+                            const parsed = JSON.parse(result.candidates[0].content.parts[0].text);
+                            if (Array.isArray(parsed)) return parsed;
+                            throw new Error("AI did not return an array.");
+                        } catch (e) { throw new Error("AI returned invalid data format for storyboard."); }
+                    } else { throw new Error("Could not get a valid storyboard from AI."); }
+                };
+                const generateStoryboardImages = async (prompts) => {
+                    const imagePromises = prompts.map(prompt => {
+                        const payload = { instances: [{ prompt }], parameters: { "sampleCount": 1 } };
+                        return apiFetch(IMAGEN_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+                            .then(res => res.json())
+                            .then(result => result.predictions?.[0]?.bytesBase64Encoded ? `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}` : 'placeholder')
+                            .catch(err => { console.warn(`Image generation failed for prompt "${prompt}":`, err); return 'placeholder'; });
+                    });
+                    return Promise.all(imagePromises);
+                };
+                const renderStoryboard = (frames) => {
+                    let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">';
+                    frames.forEach((frame, index) => {
+                        const imageUrl = frame.imageUrl === 'placeholder' 
+                            ? `<div class="w-full aspect-video bg-gray-800 rounded-lg flex items-center justify-center text-gray-500">Image failed</div>`
+                            : `<img src="${frame.imageUrl}" alt="${frame.shotType}" class="w-full h-full object-cover rounded-lg shadow-lg">`;
+                        html += `<div class="bg-gray-800/50 p-4 rounded-xl border border-gray-700"><div class="aspect-video mb-3">${imageUrl}</div><h4 class="font-bold text-lg text-violet-300">Frame ${index + 1}: ${frame.shotType}</h4><p class="text-sm text-gray-400 mt-1">${frame.imagePrompt}</p></div>`;
+                    });
+                    html += '</div>';
+                    resultsSection.innerHTML = html;
+                };
+
+                const prompt = promptInput.value.trim();
+                if (!prompt) { alert("Please describe a scene."); return; }
+                setLoadingState(true);
+                resultsSection.innerHTML = '';
+                try {
+                    updateStatus("Writing the script (generating prompts)...");
+                    const storyboardFrames = await getStoryboardFrames(prompt);
+                    updateStatus("Shooting the scenes (generating images)...");
+                    const imageGenerationPromises = storyboardFrames.map(frame => generateStoryboardImages([frame.imagePrompt]).then(urls => ({...frame, imageUrl: urls[0]})));
+                    const framesWithImages = await Promise.all(imageGenerationPromises);
+                    updateStatus("Editing the final cut...");
+                    renderStoryboard(framesWithImages);
+                } catch (error) {
+                    showError(error.message);
+                } finally {
+                    setLoadingState(false);
+                }
+            });
+        }
+
+        // --- SHOWCASE MODULE LOGIC ---
+        function initShowcaseModule() {
+            const container = document.getElementById('showcase-content');
+            container.innerHTML = `
+                <section class="text-center mb-12">
+                    <h2 class="text-3xl md:text-4xl font-bold tracking-tight">AI Portfolio Assistant</h2>
+                    <p class="mt-3 max-w-2xl mx-auto text-md text-gray-400">Craft compelling case studies and tailor your portfolio for any job.</p>
+                </section>
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- AI Case Study Writer -->
+                    <div class="p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4 text-violet-300">1. AI Case Study Writer</h3>
+                        <div class="space-y-4">
+                            <div><label for="case-title" class="text-sm font-medium text-gray-300">Project Title</label><input type="text" id="case-title" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded-lg p-2" placeholder="e.g., Rebranding of a Local Coffee Shop"></div>
+                            <div><label for="case-problem" class="text-sm font-medium text-gray-300">The Problem</label><textarea id="case-problem" rows="3" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded-lg p-2" placeholder="What was the challenge or goal?"></textarea></div>
+                            <div><label for="case-solution" class="text-sm font-medium text-gray-300">My Solution</label><textarea id="case-solution" rows="4" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded-lg p-2" placeholder="How did you approach it? What was your process?"></textarea></div>
+                            <button id="case-generate-btn" class="w-full py-3 text-md font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700">✍️ Write My Case Study</button>
+                        </div>
+                        <div id="case-status-section" class="text-center my-4"></div>
+                        <div id="case-results-section" class="mt-6 p-4 bg-gray-900/50 rounded-lg prose max-w-none"></div>
+                    </div>
+                    <!-- AI Portfolio Tailor -->
+                    <div class="p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
+                        <h3 class="text-xl font-bold mb-4 text-violet-300">2. AI Portfolio Tailor</h3>
+                        <p class="text-sm text-gray-400 mb-4">Paste a job description below. The AI will analyze it and suggest which types of projects from your portfolio you should highlight.</p>
+                        <div><label for="jd-input" class="text-sm font-medium text-gray-300">Job Description</label><textarea id="jd-input" rows="10" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded-lg p-2" placeholder="Paste the full job description here..."></textarea></div>
+                        <button id="jd-analyze-btn" class="w-full mt-4 py-3 text-md font-semibold text-white bg-violet-600 rounded-lg hover:bg-violet-700">🔬 Analyze & Suggest</button>
+                        <div id="jd-status-section" class="text-center my-4"></div>
+                        <div id="jd-results-section" class="mt-6 p-4 bg-gray-900/50 rounded-lg prose max-w-none"></div>
+                    </div>
+                </div>`;
+
+            document.getElementById('case-generate-btn').addEventListener('click', async () => {
+                const title = document.getElementById('case-title').value;
+                const problem = document.getElementById('case-problem').value;
+                const solution = document.getElementById('case-solution').value;
+                const statusSection = document.getElementById('case-status-section');
+                const resultsSection = document.getElementById('case-results-section');
+                const generateBtn = document.getElementById('case-generate-btn');
+
+                if (!title || !problem || !solution) { alert("Please fill in all fields for the case study."); return; }
+                generateBtn.disabled = true;
+                statusSection.innerHTML = `<div class="flex items-center justify-center gap-2 text-gray-400"><div class="loader" style="width:20px; height:20px;"></div><span>Writing...</span></div>`;
+                resultsSection.innerHTML = '';
+
+                const systemPrompt = `You are a professional portfolio writer. Your task is to write a compelling and professional case study for a design project. Use the following information provided by the user. Structure the output with clear headings (like "The Challenge", "My Approach", "The Outcome"), use engaging language, and present it as a story of problem-solving. Use markdown for formatting.`;
+                const userContent = `Project Title: ${title}\n\nThe Problem: ${problem}\n\nMy Solution: ${solution}`;
+                const payload = { contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }] };
+
+                try {
+                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        resultsSection.innerHTML = secureMarkdownToHtml(result.candidates[0].content.parts[0].text);
+                    } else { throw new Error("The AI did not return a case study."); }
+                } catch (error) {
+                    resultsSection.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
+                } finally {
+                    generateBtn.disabled = false;
+                    statusSection.innerHTML = '';
+                }
+            });
+
+            document.getElementById('jd-analyze-btn').addEventListener('click', async () => {
+                const jdInput = document.getElementById('jd-input').value;
+                const statusSection = document.getElementById('jd-status-section');
+                const resultsSection = document.getElementById('jd-results-section');
+                const analyzeBtn = document.getElementById('jd-analyze-btn');
+
+                if (!jdInput) { alert("Please paste a job description."); return; }
+                analyzeBtn.disabled = true;
+                statusSection.innerHTML = `<div class="flex items-center justify-center gap-2 text-gray-400"><div class="loader" style="width:20px; height:20px;"></div><span>Analyzing...</span></div>`;
+                resultsSection.innerHTML = '';
+
+                const systemPrompt = `You are an expert career coach for designers. Analyze the following job description (JD). Your task is to provide strategic advice for a designer applying for this role.
+                    1.  **Summarize the Role:** In one sentence, what is the core of this job?
+                    2.  **Top 3 Keywords:** Identify the top 3 most important skills or keywords in this JD.
+                    3.  **Portfolio Suggestion:** Based on the analysis, what specific *types* of projects should the designer highlight in their portfolio? Be specific (e.g., "A project showing complex UI/UX data visualization," or "A branding project with a strong storytelling component").
+                    4.  **Red Flags (if any):** Briefly mention any potential red flags or points of caution in the JD. If none, say "No red flags detected."
+                    Structure your response with clear markdown headings.`;
+                const payload = { contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\nJob Description:\n${jdInput}` }] }] };
+
+                try {
+                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const result = await response.json();
+                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
+                        resultsSection.innerHTML = secureMarkdownToHtml(result.candidates[0].content.parts[0].text);
+                    } else { throw new Error("The AI did not return an analysis."); }
+                } catch (error) {
+                    resultsSection.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
+                } finally {
+                    analyzeBtn.disabled = false;
+                    statusSection.innerHTML = '';
+                }
+            });
+        }
+
+        // --- APP INITIALIZATION ---
+        initModules();
+        initializeFirebase();
+
+    </script>
+</body>
+</html>
