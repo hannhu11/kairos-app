@@ -80,7 +80,7 @@
         // IMPORTANT: This API_KEY is a placeholder. In a real deployment on Vercel/Netlify,
         // this should be replaced by an environment variable during the build process.
         // For this environment, Canvas provides the key automatically.
-        const API_KEY = ""; 
+        const API_KEY = (typeof import.meta.env !== 'undefined' && import.meta.env.VITE_GEMINI_API_KEY) || "";
         const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
         const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${API_KEY}`;
 
