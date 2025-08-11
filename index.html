@@ -77,10 +77,13 @@
         let activeTab = 'muse';
         let uploadedCritiqueImageBase64 = null;
         
-        // IMPORTANT: This API_KEY is a placeholder. In a real deployment on Vercel/Netlify,
-        // this should be replaced by an environment variable during the build process.
-        // For this environment, Canvas provides the key automatically.
+        // --- API KEY MANAGEMENT (PRODUCTION-READY) ---
+        // In this environment, Canvas provides the key automatically.
+        // When you deploy to Vercel, its build system (Vite) will replace
+        // `import.meta.env.VITE_GEMINI_API_KEY` with the actual secret you set
+        // in the Environment Variables.
         const API_KEY = (typeof import.meta.env !== 'undefined' && import.meta.env.VITE_GEMINI_API_KEY) || "";
+        
         const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
         const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${API_KEY}`;
 
@@ -138,7 +141,7 @@
                 try {
                     const response = await fetch(url, options);
                     if (response.ok) return response;
-                    if (response.status >= 400 && response.status < 500) throw new Error(`API Client Error: ${response.status} ${response.statusText}`);
+                    if (response.status >= 400 && response.status < 500) throw new Error(`API Client Error: ${response.status}`);
                     console.warn(`API request failed with status ${response.status}. Retrying in ${delay}ms...`);
                 } catch (error) {
                     if (i === retries - 1) throw error;
@@ -148,12 +151,9 @@
             throw new Error("API request failed after multiple retries.");
         };
         const secureMarkdownToHtml = (text) => {
-            // Sanitize the input to prevent XSS.
             const tempDiv = document.createElement('div');
             tempDiv.textContent = text;
             let sanitizedText = tempDiv.innerHTML;
-
-            // Apply markdown formatting to the sanitized text.
              return sanitizedText
                 .replace(/^(#+)\s*(.*)/gm, (match, hashes, content) => `<h${hashes.length + 1} class="font-bold mt-4 mb-2 text-white">${content}</h${hashes.length + 1}>`)
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -173,7 +173,16 @@
         };
 
         // --- MUSE MODULE LOGIC ---
-        function initMuseModule() {
+        function initMuseModule() { /* ... Collapsed for brevity ... */ }
+        // --- CRITIQUE MODULE LOGIC ---
+        function initCritiqueModule() { /* ... Collapsed for brevity ... */ }
+        // --- SYNTH MODULE LOGIC ---
+        function initSynthModule() { /* ... Collapsed for brevity ... */ }
+        // --- SHOWCASE MODULE LOGIC ---
+        function initShowcaseModule() { /* ... Collapsed for brevity ... */ }
+
+        // Re-pasting the full functions to ensure they are defined in scope
+        initMuseModule = function() {
             const container = document.getElementById('muse-content');
             container.innerHTML = `
                 <section class="text-center mb-12"><h2 class="text-3xl md:text-4xl font-bold tracking-tight">AI Moodboard Generator</h2><p class="mt-3 max-w-2xl mx-auto text-md text-gray-400">Describe your concept, and let our AI build the perfect moodboard for you.</p></section>
@@ -244,9 +253,7 @@
                 }
             });
         }
-
-        // --- CRITIQUE MODULE LOGIC ---
-        function initCritiqueModule() {
+        initCritiqueModule = function() {
             const container = document.getElementById('critique-content');
             container.innerHTML = `
                 <section class="text-center mb-12"><h2 class="text-3xl md:text-4xl font-bold tracking-tight">AI Persona Feedback</h2><p class="mt-3 max-w-2xl mx-auto text-md text-gray-400">Upload your design and get an honest critique from different perspectives.</p></section>
@@ -304,9 +311,7 @@
                 if (e.dataTransfer.files.length) handleImageUpload(e.dataTransfer.files[0]);
             });
         }
-        
-        // --- SYNTH MODULE LOGIC ---
-        function initSynthModule() {
+        initSynthModule = function() {
             const container = document.getElementById('synth-content');
             container.innerHTML = `
                 <section class="text-center mb-12"><h2 class="text-3xl md:text-4xl font-bold tracking-tight">AI Storyboard Generator</h2><p class="mt-3 max-w-2xl mx-auto text-md text-gray-400">Describe a scene, and let AI create the storyboard frames for you.</p></section>
@@ -383,9 +388,7 @@
                 }
             });
         }
-
-        // --- SHOWCASE MODULE LOGIC ---
-        function initShowcaseModule() {
+        initShowcaseModule = function() {
             const container = document.getElementById('showcase-content');
             container.innerHTML = `
                 <section class="text-center mb-12">
@@ -488,3 +491,4 @@
     </script>
 </body>
 </html>
+```
