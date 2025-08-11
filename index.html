@@ -9,28 +9,14 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #111827;
-            color: #F9FAFB;
-        }
+        body { font-family: 'Inter', sans-serif; background-color: #111827; color: #F9FAFB; }
         .tab-active { background-color: #374151; color: #F9FAFB; }
         .tab-inactive { background-color: transparent; color: #9CA3AF; border-color: transparent; }
-        .loader {
-            width: 40px; aspect-ratio: 1; border-radius: 50%;
-            background: radial-gradient(farthest-side, #7c3aed 94%, #0000) top/8px 8px no-repeat, conic-gradient(#0000 30%, #7c3aed);
-            -webkit-mask: radial-gradient(farthest-side, #0000 calc(100% - 8px), #000 0);
-            animation: l13 1s infinite linear;
-        }
+        .loader { width: 40px; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(farthest-side, #7c3aed 94%, #0000) top/8px 8px no-repeat, conic-gradient(#0000 30%, #7c3aed); -webkit-mask: radial-gradient(farthest-side, #0000 calc(100% - 8px), #000 0); animation: l13 1s infinite linear; }
         @keyframes l13 { 100% { transform: rotate(1turn) } }
         .fade-in { animation: fadeIn 0.8s ease-in-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .prose { color: #d1d5db; }
-        .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 { color: #f9fafb; font-weight: 600; }
-        .prose strong { color: #f9fafb; }
-        .prose a { color: #a78bfa; }
-        .prose code { color: #f472b6; background-color: #374151; padding: 0.2em 0.4em; border-radius: 0.25rem;}
-        .prose ul > li::before { background-color: #a78bfa; }
+        .prose { color: #d1d5db; } .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 { color: #f9fafb; font-weight: 600; } .prose strong { color: #f9fafb; } .prose a { color: #a78bfa; } .prose code { color: #f472b6; background-color: #374151; padding: 0.2em 0.4em; border-radius: 0.25rem;} .prose ul > li::before { background-color: #a78bfa; }
     </style>
 </head>
 <body class="antialiased">
@@ -68,24 +54,21 @@
         </main>
     </div>
 
+    <!-- Firebase SDK - Note: These special paths work when deployed to Firebase Hosting -->
+    <!-- For local testing or other environments, we use modular imports below -->
+    <script src="/__/firebase/8.10.1/firebase-app.js" defer></script>
+    <script src="/__/firebase/8.10.1/firebase-auth.js" defer></script>
+    <script src="/__/firebase/init.js" defer></script>
+
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Using modern imports for compatibility in all environments (Canvas, local, etc.)
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-auth.js";
 
         // --- GLOBAL STATE & CONFIG ---
         let auth;
         let activeTab = 'muse';
         let uploadedCritiqueImageBase64 = null;
-        
-        // --- API KEY MANAGEMENT (PRODUCTION-READY) ---
-        // In this environment, Canvas provides the key automatically.
-        // When you deploy to Vercel, its build system (Vite) will replace
-        // `import.meta.env.VITE_GEMINI_API_KEY` with the actual secret you set
-        // in the Environment Variables.
-        const API_KEY = (typeof import.meta.env !== 'undefined' && import.meta.env.VITE_GEMINI_API_KEY) || "";
-        
-        const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
-        const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${API_KEY}`;
 
         // --- AUTHENTICATION ---
         const authSection = document.getElementById('auth-section');
@@ -98,57 +81,51 @@
                 document.getElementById('login-btn').addEventListener('click', () => signInAnonymously(auth).catch(err => console.error("Anonymous sign-in failed", err)));
             }
         };
-        const initializeFirebase = async () => {
+        const initializeFirebase = () => {
             try {
-                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-                if (!firebaseConfig) { console.error("Firebase config not found."); updateAuthUI(null); return; }
+                // This logic handles both Firebase Hosting and other environments like Canvas
+                const firebaseConfig = typeof __firebase_config !== 'undefined'
+                    ? JSON.parse(__firebase_config)
+                    : (window.firebaseConfig); // `firebaseConfig` is provided by /__/firebase/init.js on Hosting
+
+                if (!firebaseConfig) {
+                    console.error("Firebase config not found.");
+                    updateAuthUI(null); // Show login button but it might fail
+                    return;
+                }
+                
                 const app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 onAuthStateChanged(auth, user => updateAuthUI(user));
-            } catch (e) { console.error("Firebase initialization error:", e); }
+
+            } catch (e) {
+                console.error("Firebase initialization error:", e);
+                document.body.innerHTML = "Error initializing Firebase. Please check your Firebase project configuration.";
+            }
         };
 
         // --- TAB NAVIGATION ---
         const handleTabClick = (e) => {
-            const targetTab = e.currentTarget.dataset.tab;
-            if (targetTab === activeTab) return;
-            activeTab = targetTab;
+            activeTab = e.currentTarget.dataset.tab;
             updateTabs();
         };
         const updateTabs = () => {
-            document.querySelectorAll('.nav-tab').forEach(tab => {
-                const isTabActive = tab.dataset.tab === activeTab;
-                tab.classList.toggle('tab-active', isTabActive);
-                tab.classList.toggle('tab-inactive', !isTabActive);
-            });
-            document.querySelectorAll('.tab-pane').forEach(pane => {
-                pane.classList.toggle('hidden', pane.id !== `${activeTab}-content`);
-            });
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.toggle('tab-active', tab.dataset.tab === activeTab));
+            document.querySelectorAll('.tab-pane').forEach(pane => pane.classList.toggle('hidden', pane.id !== `${activeTab}-content`));
         };
 
         // --- UTILS ---
-        window.copyToClipboard = (text, element) => {
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = element.querySelector('.copy-text');
-                if(originalText) {
-                    originalText.textContent = 'Copied!';
-                    setTimeout(() => { originalText.textContent = 'Copy'; }, 1500);
-                }
+        const apiFetch = async (endpoint, payload) => {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
-        };
-        const apiFetch = async (url, options, retries = 3, delay = 1000) => {
-            for (let i = 0; i < retries; i++) {
-                try {
-                    const response = await fetch(url, options);
-                    if (response.ok) return response;
-                    if (response.status >= 400 && response.status < 500) throw new Error(`API Client Error: ${response.status}`);
-                    console.warn(`API request failed with status ${response.status}. Retrying in ${delay}ms...`);
-                } catch (error) {
-                    if (i === retries - 1) throw error;
-                }
-                await new Promise(res => setTimeout(res, delay * (i + 1)));
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || `API Error: ${response.status}`);
             }
-            throw new Error("API request failed after multiple retries.");
+            return response.json();
         };
         const secureMarkdownToHtml = (text) => {
             const tempDiv = document.createElement('div');
@@ -171,17 +148,14 @@
             document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', handleTabClick));
             updateTabs();
         };
+        
+        // --- MODULE LOGIC (Functions are defined inside each init function) ---
+        function initMuseModule() { /* ... Implementation ... */ }
+        function initCritiqueModule() { /* ... Implementation ... */ }
+        function initSynthModule() { /* ... Implementation ... */ }
+        function initShowcaseModule() { /* ... Implementation ... */ }
 
-        // --- MUSE MODULE LOGIC ---
-        function initMuseModule() { /* ... Collapsed for brevity ... */ }
-        // --- CRITIQUE MODULE LOGIC ---
-        function initCritiqueModule() { /* ... Collapsed for brevity ... */ }
-        // --- SYNTH MODULE LOGIC ---
-        function initSynthModule() { /* ... Collapsed for brevity ... */ }
-        // --- SHOWCASE MODULE LOGIC ---
-        function initShowcaseModule() { /* ... Collapsed for brevity ... */ }
-
-        // Re-pasting the full functions to ensure they are defined in scope
+        // --- PASTE FULL MODULE IMPLEMENTATIONS HERE ---
         initMuseModule = function() {
             const container = document.getElementById('muse-content');
             container.innerHTML = `
@@ -205,35 +179,13 @@
                 };
                 const showError = (message) => { statusSection.innerHTML = `<div class="p-4 bg-red-900/50 text-red-300 border border-red-700 rounded-lg">${message}</div>`; };
                 
-                const getDesignBrief = async (userPrompt) => {
-                    const systemPrompt = `You are an expert art director. Based on the user's prompt, generate a structured JSON object for a design moodboard. The JSON must follow this schema: - "colorPalette": An array of 5 hex color codes. - "fontPairing": An object with "headingFont" and "bodyFont" (names from Google Fonts). - "imagePrompts": An array of 4 distinct, highly-detailed prompts for an AI image generator. - "keywords": An array of 5-7 relevant keywords. - "title": A creative title for the moodboard. Ensure the output is ONLY the raw JSON object.`;
-                    const payload = { contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\nUser Prompt: "${userPrompt}"` }] }], generationConfig: { responseMimeType: "application/json" } };
-                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    const result = await response.json();
-                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
-                        try { return JSON.parse(result.candidates[0].content.parts[0].text); } catch (e) { throw new Error("AI returned invalid data format."); }
-                    } else { throw new Error("Could not get a valid design brief from AI."); }
-                };
-                const generateImages = async (prompts) => {
-                    const imagePromises = prompts.map(prompt => {
-                        const payload = { instances: [{ prompt }], parameters: { "sampleCount": 1 } };
-                        return apiFetch(IMAGEN_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-                            .then(res => res.json())
-                            .then(result => result.predictions?.[0]?.bytesBase64Encoded ? `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}` : 'placeholder')
-                            .catch(err => { console.warn(`Image generation failed for prompt "${prompt}":`, err); return 'placeholder'; });
-                    });
-                    return Promise.all(imagePromises);
-                };
                 const renderMoodboard = (brief, imageUrls) => {
                     const { colorPalette, fontPairing, keywords, title } = brief;
                     const fontLink = document.createElement('link');
                     fontLink.href = `https://fonts.googleapis.com/css2?family=${fontPairing.headingFont.replace(' ', '+')}:wght@700&family=${fontPairing.bodyFont.replace(' ', '+')}:wght@400&display=swap`;
                     fontLink.rel = 'stylesheet';
                     document.head.appendChild(fontLink);
-                    const styleTag = document.createElement('style');
-                    styleTag.innerHTML = `.font-heading-display { font-family: '${fontPairing.headingFont}', sans-serif; } .font-body-display { font-family: '${fontPairing.bodyFont}', sans-serif; }`;
-                    document.head.appendChild(styleTag);
-                    resultsSection.innerHTML = `<div class="space-y-12 fade-in"><h3 class="text-3xl font-bold text-center tracking-tight">${title}</h3><div><h4 class="text-xl font-semibold mb-4">Color Palette</h4><div class="grid grid-cols-5 gap-4 p-4 bg-gray-800/50 rounded-lg">${colorPalette.map(c => `<div class="group relative" onclick="copyToClipboard('${c}', this)"><div class="w-full h-24 md:h-32 rounded-lg cursor-pointer transition-transform group-hover:scale-105" style="background-color: ${c};"></div><span class="mt-2 text-center block text-sm text-gray-400 group-hover:text-white">${c}</span><div class="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"><span class="text-white text-xs font-bold copy-text">Copy</span></div></div>`).join('')}</div></div><div><h4 class="text-xl font-semibold mb-4">Typography</h4><div class="grid md:grid-cols-2 gap-6 p-6 bg-gray-800/50 rounded-lg"><div><p class="text-sm text-gray-400 mb-2">Heading</p><p class="text-4xl font-heading-display font-bold">${fontPairing.headingFont}</p></div><div><p class="text-sm text-gray-400 mb-2">Body</p><p class="text-lg font-body-display">The quick brown fox jumps over the lazy dog. ${fontPairing.bodyFont}.</p></div></div></div><div><h4 class="text-xl font-semibold mb-4">Inspirational Images</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4">${imageUrls.map(url => url === 'placeholder' ? `<div class="aspect-square bg-gray-800 rounded-lg flex items-center justify-center text-gray-500">Image failed</div>` : `<img src="${url}" alt="AI generated image" class="w-full h-full object-cover rounded-lg shadow-lg">`).join('')}</div></div><div><h4 class="text-xl font-semibold mb-4">Keywords</h4><div class="flex flex-wrap gap-3">${keywords.map(k => `<span class="px-3 py-1 bg-gray-700 text-gray-300 rounded-full text-sm">${k}</span>`).join('')}</div></div></div>`;
+                    resultsSection.innerHTML = `<div class="space-y-12 fade-in"><h3 class="text-3xl font-bold text-center tracking-tight" style="font-family: '${fontPairing.headingFont}', sans-serif;">${title}</h3><div><h4 class="text-xl font-semibold mb-4">Color Palette</h4><div class="grid grid-cols-5 gap-4 p-4 bg-gray-800/50 rounded-lg">${colorPalette.map(c => `<div class="group relative" onclick="navigator.clipboard.writeText('${c}')"><div class="w-full h-24 md:h-32 rounded-lg cursor-pointer transition-transform group-hover:scale-105" style="background-color: ${c};"></div><span class="mt-2 text-center block text-sm text-gray-400 group-hover:text-white">${c}</span></div>`).join('')}</div></div><div><h4 class="text-xl font-semibold mb-4">Typography</h4><div class="grid md:grid-cols-2 gap-6 p-6 bg-gray-800/50 rounded-lg"><div><p class="text-sm text-gray-400 mb-2">Heading</p><p class="text-4xl font-bold" style="font-family: '${fontPairing.headingFont}', sans-serif;">${fontPairing.headingFont}</p></div><div><p class="text-sm text-gray-400 mb-2">Body</p><p class="text-lg" style="font-family: '${fontPairing.bodyFont}', sans-serif;">The quick brown fox jumps over the lazy dog.</p></div></div></div><div><h4 class="text-xl font-semibold mb-4">Inspirational Images</h4><div class="grid grid-cols-1 md:grid-cols-2 gap-4">${imageUrls.map(url => url === 'placeholder' ? `<div class="aspect-square bg-gray-800 rounded-lg flex items-center justify-center text-gray-500">Image failed</div>` : `<img src="${url}" alt="AI generated image" class="w-full h-full object-cover rounded-lg shadow-lg">`).join('')}</div></div><div><h4 class="text-xl font-semibold mb-4">Keywords</h4><div class="flex flex-wrap gap-3">${keywords.map(k => `<span class="px-3 py-1 bg-gray-700 text-gray-300 rounded-full text-sm">${k}</span>`).join('')}</div></div></div>`;
                 };
                 
                 const prompt = promptInput.value.trim();
@@ -241,11 +193,10 @@
                 setLoadingState(true);
                 resultsSection.innerHTML = '';
                 try {
-                    const designBrief = await getDesignBrief(prompt);
-                    updateStatus("Brief received. Generating images...");
-                    const imageUrls = await generateImages(designBrief.imagePrompts);
+                    updateStatus("Generating design brief...");
+                    const { brief, images } = await apiFetch('/api', { type: 'muse', prompt });
                     updateStatus("Assembling moodboard...");
-                    renderMoodboard(designBrief, imageUrls);
+                    renderMoodboard(brief, images);
                 } catch (error) {
                     showError(error.message);
                 } finally {
@@ -286,15 +237,14 @@
                 if (!uploadedCritiqueImageBase64 || !personaSelect.value) { alert("Please upload an image and select a persona."); return; }
                 feedbackDisplay.innerHTML = `<div class="flex-grow flex items-center justify-center text-center"><div class="flex flex-col items-center gap-4"><div class="loader"></div><p class="text-gray-400">AI is analyzing your design...</p></div></div>`;
                 critiqueBtn.disabled = true;
-                const persona = personaSelect.value;
-                const prompt = `You are a professional ${persona}. Your task is to provide a constructive critique of the following design. Be honest, direct, and provide actionable feedback from your specific point of view. Structure your feedback with markdown headings, bold text, and bullet points.`;
-                const payload = { contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: "image/jpeg", data: uploadedCritiqueImageBase64 } }] }] };
+                
                 try {
-                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    const result = await response.json();
-                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
-                        feedbackDisplay.innerHTML = `<div class="text-left text-gray-300 prose max-w-none">${secureMarkdownToHtml(result.candidates[0].content.parts[0].text)}</div>`;
-                    } else { throw new Error("Received an empty response from the AI."); }
+                    const { feedback } = await apiFetch('/api', {
+                        type: 'critique',
+                        persona: personaSelect.value,
+                        imageBase64: uploadedCritiqueImageBase64
+                    });
+                    feedbackDisplay.innerHTML = `<div class="text-left text-gray-300 prose max-w-none">${secureMarkdownToHtml(feedback)}</div>`;
                 } catch (error) {
                     feedbackDisplay.innerHTML = `<div class="flex-grow flex items-center justify-center text-center text-red-400"><p>Error: ${error.message}</p></div>`;
                 } finally {
@@ -334,29 +284,6 @@
                 };
                 const showError = (message) => { statusSection.innerHTML = `<div class="p-4 bg-red-900/50 text-red-300 border border-red-700 rounded-lg">${message}</div>`; };
                 
-                const getStoryboardFrames = async (userPrompt) => {
-                    const systemPrompt = `You are a professional film director. Based on the user's scene description, create a JSON array of 4 storyboard frames. Each object in the array must have two properties: "shotType" (e.g., "Wide Shot", "Medium Shot", "Close-up", "Over the Shoulder") and "imagePrompt" (a highly detailed, cinematic, and artistic prompt for an AI image generator to create the visual for that frame). Ensure the output is ONLY the raw JSON array.`;
-                    const payload = { contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\nScene: "${userPrompt}"` }] }], generationConfig: { responseMimeType: "application/json" } };
-                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    const result = await response.json();
-                     if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
-                        try { 
-                            const parsed = JSON.parse(result.candidates[0].content.parts[0].text);
-                            if (Array.isArray(parsed)) return parsed;
-                            throw new Error("AI did not return an array.");
-                        } catch (e) { throw new Error("AI returned invalid data format for storyboard."); }
-                    } else { throw new Error("Could not get a valid storyboard from AI."); }
-                };
-                const generateStoryboardImages = async (prompts) => {
-                    const imagePromises = prompts.map(prompt => {
-                        const payload = { instances: [{ prompt }], parameters: { "sampleCount": 1 } };
-                        return apiFetch(IMAGEN_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-                            .then(res => res.json())
-                            .then(result => result.predictions?.[0]?.bytesBase64Encoded ? `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}` : 'placeholder')
-                            .catch(err => { console.warn(`Image generation failed for prompt "${prompt}":`, err); return 'placeholder'; });
-                    });
-                    return Promise.all(imagePromises);
-                };
                 const renderStoryboard = (frames) => {
                     let html = '<div class="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">';
                     frames.forEach((frame, index) => {
@@ -374,13 +301,10 @@
                 setLoadingState(true);
                 resultsSection.innerHTML = '';
                 try {
-                    updateStatus("Writing the script (generating prompts)...");
-                    const storyboardFrames = await getStoryboardFrames(prompt);
-                    updateStatus("Shooting the scenes (generating images)...");
-                    const imageGenerationPromises = storyboardFrames.map(frame => generateStoryboardImages([frame.imagePrompt]).then(urls => ({...frame, imageUrl: urls[0]})));
-                    const framesWithImages = await Promise.all(imageGenerationPromises);
-                    updateStatus("Editing the final cut...");
-                    renderStoryboard(framesWithImages);
+                    updateStatus("Generating storyboard frames...");
+                    const { frames } = await apiFetch('/api', { type: 'synth', prompt });
+                    updateStatus("Rendering storyboard...");
+                    renderStoryboard(frames);
                 } catch (error) {
                     showError(error.message);
                 } finally {
@@ -396,7 +320,6 @@
                     <p class="mt-3 max-w-2xl mx-auto text-md text-gray-400">Craft compelling case studies and tailor your portfolio for any job.</p>
                 </section>
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <!-- AI Case Study Writer -->
                     <div class="p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
                         <h3 class="text-xl font-bold mb-4 text-violet-300">1. AI Case Study Writer</h3>
                         <div class="space-y-4">
@@ -408,7 +331,6 @@
                         <div id="case-status-section" class="text-center my-4"></div>
                         <div id="case-results-section" class="mt-6 p-4 bg-gray-900/50 rounded-lg prose max-w-none"></div>
                     </div>
-                    <!-- AI Portfolio Tailor -->
                     <div class="p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
                         <h3 class="text-xl font-bold mb-4 text-violet-300">2. AI Portfolio Tailor</h3>
                         <p class="text-sm text-gray-400 mb-4">Paste a job description below. The AI will analyze it and suggest which types of projects from your portfolio you should highlight.</p>
@@ -420,28 +342,25 @@
                 </div>`;
 
             document.getElementById('case-generate-btn').addEventListener('click', async () => {
-                const title = document.getElementById('case-title').value;
-                const problem = document.getElementById('case-problem').value;
-                const solution = document.getElementById('case-solution').value;
                 const statusSection = document.getElementById('case-status-section');
                 const resultsSection = document.getElementById('case-results-section');
                 const generateBtn = document.getElementById('case-generate-btn');
+                
+                const payload = {
+                    type: 'caseStudy',
+                    title: document.getElementById('case-title').value,
+                    problem: document.getElementById('case-problem').value,
+                    solution: document.getElementById('case-solution').value
+                };
 
-                if (!title || !problem || !solution) { alert("Please fill in all fields for the case study."); return; }
+                if (!payload.title || !payload.problem || !payload.solution) { alert("Please fill in all fields for the case study."); return; }
                 generateBtn.disabled = true;
                 statusSection.innerHTML = `<div class="flex items-center justify-center gap-2 text-gray-400"><div class="loader" style="width:20px; height:20px;"></div><span>Writing...</span></div>`;
                 resultsSection.innerHTML = '';
 
-                const systemPrompt = `You are a professional portfolio writer. Your task is to write a compelling and professional case study for a design project. Use the following information provided by the user. Structure the output with clear headings (like "The Challenge", "My Approach", "The Outcome"), use engaging language, and present it as a story of problem-solving. Use markdown for formatting.`;
-                const userContent = `Project Title: ${title}\n\nThe Problem: ${problem}\n\nMy Solution: ${solution}`;
-                const payload = { contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userContent}` }] }] };
-
                 try {
-                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    const result = await response.json();
-                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
-                        resultsSection.innerHTML = secureMarkdownToHtml(result.candidates[0].content.parts[0].text);
-                    } else { throw new Error("The AI did not return a case study."); }
+                    const { caseStudy } = await apiFetch('/api', payload);
+                    resultsSection.innerHTML = secureMarkdownToHtml(caseStudy);
                 } catch (error) {
                     resultsSection.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
                 } finally {
@@ -451,30 +370,22 @@
             });
 
             document.getElementById('jd-analyze-btn').addEventListener('click', async () => {
-                const jdInput = document.getElementById('jd-input').value;
                 const statusSection = document.getElementById('jd-status-section');
                 const resultsSection = document.getElementById('jd-results-section');
                 const analyzeBtn = document.getElementById('jd-analyze-btn');
+                const payload = {
+                    type: 'jdAnalysis',
+                    jd: document.getElementById('jd-input').value
+                };
 
-                if (!jdInput) { alert("Please paste a job description."); return; }
+                if (!payload.jd) { alert("Please paste a job description."); return; }
                 analyzeBtn.disabled = true;
                 statusSection.innerHTML = `<div class="flex items-center justify-center gap-2 text-gray-400"><div class="loader" style="width:20px; height:20px;"></div><span>Analyzing...</span></div>`;
                 resultsSection.innerHTML = '';
 
-                const systemPrompt = `You are an expert career coach for designers. Analyze the following job description (JD). Your task is to provide strategic advice for a designer applying for this role.
-                    1.  **Summarize the Role:** In one sentence, what is the core of this job?
-                    2.  **Top 3 Keywords:** Identify the top 3 most important skills or keywords in this JD.
-                    3.  **Portfolio Suggestion:** Based on the analysis, what specific *types* of projects should the designer highlight in their portfolio? Be specific (e.g., "A project showing complex UI/UX data visualization," or "A branding project with a strong storytelling component").
-                    4.  **Red Flags (if any):** Briefly mention any potential red flags or points of caution in the JD. If none, say "No red flags detected."
-                    Structure your response with clear markdown headings.`;
-                const payload = { contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\nJob Description:\n${jdInput}` }] }] };
-
                 try {
-                    const response = await apiFetch(GEMINI_API_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    const result = await response.json();
-                    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
-                        resultsSection.innerHTML = secureMarkdownToHtml(result.candidates[0].content.parts[0].text);
-                    } else { throw new Error("The AI did not return an analysis."); }
+                    const { analysis } = await apiFetch('/api', payload);
+                    resultsSection.innerHTML = secureMarkdownToHtml(analysis);
                 } catch (error) {
                     resultsSection.innerHTML = `<p class="text-red-400">Error: ${error.message}</p>`;
                 } finally {
@@ -485,10 +396,13 @@
         }
 
         // --- APP INITIALIZATION ---
-        initModules();
-        initializeFirebase();
+        // A short delay to ensure Firebase Hosting scripts can load first if present
+        setTimeout(() => {
+            initModules();
+            initializeFirebase();
+        }, 100);
+
 
     </script>
 </body>
 </html>
-```
